@@ -52,7 +52,7 @@ fn ere(path: impl AsRef<Path>, editor: impl Editor) -> Result<(), Error> {
     writeln!(writer, "")?;
 
     for file_name in &file_names {
-        writeln!(writer, "{}", file_name)?;
+        writeln!(writer, "{}", file_name.clone().encode_newlines())?;
     }
 
     let tmp = writer.into_inner()

@@ -9,3 +9,10 @@ edition = "2021"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 fastrand = "1.7.0"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

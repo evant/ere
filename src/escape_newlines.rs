@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+#[derive(Debug)]
 pub struct NewlineEscaped {
     str: String,
 }
@@ -18,12 +19,10 @@ impl EscapeNewlines for String {
     fn escape_newlines(self) -> NewlineEscaped {
         NewlineEscaped {
             str: if self.contains('\n') || self.contains(r"\n") {
-                self
-                    .replace(r"\n", r"\\n")
-                    .replace("\n", r"\n")
+                self.replace(r"\n", r"\\n").replace("\n", r"\n")
             } else {
                 self
-            }
+            },
         }
     }
 }
@@ -52,11 +51,13 @@ impl NewlineEscaped {
                             }
                         }
                         1 => {
-                            let out = out.get_or_insert_with(|| bytes[0..i - backslash_count].to_vec());
+                            let out =
+                                out.get_or_insert_with(|| bytes[0..i - backslash_count].to_vec());
                             out.push(b'\n');
                         }
                         _ => {
-                            let out = out.get_or_insert_with(|| bytes[0..i - backslash_count].to_vec());
+                            let out =
+                                out.get_or_insert_with(|| bytes[0..i - backslash_count].to_vec());
                             for _ in 0..(backslash_count - 1) {
                                 out.push(b'\\');
                             }

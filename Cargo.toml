@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+pico-args = { version = "0.5.0", features = ["combined-flags"] }
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 fastrand = "1.7.0"

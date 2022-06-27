@@ -1,7 +1,8 @@
+use std::fmt::Debug;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 
-#[derive(std::fmt::Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -21,4 +22,10 @@ pub enum Error {
 
     #[error("{}", .0.into_iter().map(| e | e.to_string()).collect::< Vec < String >> ().join("\n"))]
     Group(Vec<Error>),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ArgError {
+    #[error("unknown argument {0}")]
+    UnknownArg(String),
 }

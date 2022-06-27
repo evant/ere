@@ -17,7 +17,10 @@ pub fn new_tmp_file_name(file_names: &[String]) -> std::io::Result<String> {
         }
     }
 
-    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "too many temporary files exist"))
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "too many temporary files exist",
+    ))
 }
 
 fn tmpname(prefix: &str, rand_len: usize) -> String {

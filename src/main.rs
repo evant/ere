@@ -1,21 +1,37 @@
-use std::fs::{File, read_dir, rename};
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::Path;
-use std::process::{Command, exit, ExitStatus};
+extern crate core;
 
+use pico_args::Arguments;
+use std::fs::{read_dir, rename, File};
+use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::os::unix::prelude::OsStrExt;
+use std::path::Path;
+use std::process::{exit, Command, ExitStatus};
+
+use args::Args;
 use tempfile::NamedTempFile;
 
-use escape_newlines::NewlineEscaped;
+use crate::error::ArgError;
 use error::Error;
+use escape_newlines::NewlineEscaped;
 
 use crate::escape_newlines::EscapeNewlines;
 
-mod tempfile_ext;
+mod args;
 mod error;
 mod escape_newlines;
+mod tempfile_ext;
 
 fn main() {
-    match ere(".", EnvEditor) {
+    let args = Arguments::from_env();
+    let args = match Args::try_from(args) {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("{}", e);
+            exit(1);
+        }
+    };
+
+    match ere(args, EnvEditor) {
         Ok(_) => {}
         Err(e) => {
             eprintln!("{}", e);
@@ -33,30 +49,30 @@ struct EnvEditor;
 impl Editor for EnvEditor {
     fn edit(&self, path: &Path) -> std::io::Result<ExitStatus> {
         let ed = std::env::var("EDITOR").unwrap_or("vi".to_owned());
-        return Command::new(ed)
-            .arg(path)
-            .status();
+        return Command::new(ed).arg(path).status();
     }
 }
 
-fn ere(path: impl AsRef<Path>, editor: impl Editor) -> Result<(), Error> {
-    let path = path.as_ref();
+fn ere(args: Args, editor: impl Editor) -> Result<(), Error> {
+    let path = args.path.as_path();
 
-    let file_names = read_file_names_from_dir(path)?;
+    let file_names = read_file_names_from_dir(path, args.all)?;
 
     let tmp = NamedTempFile::new_in(path)?;
     let mut writer = BufWriter::new(tmp);
 
     writeln!(writer, "# Rename the files below.")?;
-    writeln!(writer, "# Do not delete or move lines as the order is used for the rename.")?;
+    writeln!(
+        writer,
+        "# Do not delete or move lines as the order is used for the rename."
+    )?;
     writeln!(writer, "")?;
 
     for file_name in &file_names {
         writeln!(writer, "{}", file_name.clone().escape_newlines())?;
     }
 
-    let tmp = writer.into_inner()
-        .map_err(|e| e.into_error())?;
+    let tmp = writer.into_inner().map_err(|e| e.into_error())?;
 
     let ed = editor.edit(tmp.path())?;
     if !ed.success() {
@@ -79,7 +95,9 @@ fn ere(path: impl AsRef<Path>, editor: impl Editor) -> Result<(), Error> {
     while !file_names.is_empty() {
         let file_name = file_names.remove(file_names.len() - 1);
         let new_file_name = new_file_names.remove(new_file_names.len() - 1).unescape();
-        if file_name == new_file_name { continue; }
+        if file_name == new_file_name {
+            continue;
+        }
 
         let from = path.join(file_name);
         if file_names.contains(&new_file_name) {
@@ -122,11 +140,13 @@ fn ere(path: impl AsRef<Path>, editor: impl Editor) -> Result<(), Error> {
     Ok(())
 }
 
-fn read_file_names_from_dir(path: &Path) -> std::io::Result<Vec<String>> {
+fn read_file_names_from_dir(path: &Path, include_hidden: bool) -> std::io::Result<Vec<String>> {
     let mut file_names = Vec::new();
     for entry in read_dir(path)? {
         let file_name = entry?.file_name();
-        file_names.push(file_name.to_string_lossy().to_string());
+        if include_hidden || !file_name.as_bytes().starts_with(&[b'.']) {
+            file_names.push(file_name.to_string_lossy().to_string());
+        }
     }
     Ok(file_names)
 }
@@ -135,8 +155,12 @@ fn parse_file_names(path: &Path) -> std::io::Result<Vec<NewlineEscaped>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
-    return reader.lines()
-        .filter(|line| line.as_ref().map_or(false, |line| !line.is_empty() && !line.starts_with("#")))
+    return reader
+        .lines()
+        .filter(|line| {
+            line.as_ref()
+                .map_or(false, |line| !line.is_empty() && !line.starts_with("#"))
+        })
         .map(|line| line.map(|line| line.escape_newlines()))
         .collect::<Result<Vec<_>, _>>();
 }
@@ -170,12 +194,19 @@ mod test {
     #[test]
     fn renames_a_file() -> Result<(), Error> {
         let test_dir = TempDir::new()?;
+        let test_path = test_dir.path();
 
-        File::create(test_dir.path().join("a"))?;
+        File::create(test_path.join("a"))?;
 
-        ere(test_dir.path(), TestEditor(|_names| vec!["b".escape_newlines()]))?;
+        ere(
+            Args {
+                path: test_path.to_path_buf(),
+                ..Args::default()
+            },
+            TestEditor(|_names| vec!["b".escape_newlines()]),
+        )?;
 
-        let file_names = read_file_names_from_dir(test_dir.path())?;
+        let file_names = read_file_names_from_dir(test_path, true)?;
 
         assert_eq!(file_names, vec!["b".to_string()]);
 
@@ -185,12 +216,19 @@ mod test {
     #[test]
     fn renames_a_file_with_a_newline_in_filename() -> Result<(), Error> {
         let test_dir = TempDir::new()?;
+        let test_path = test_dir.path();
 
-        File::create(test_dir.path().join("a\nb"))?;
+        File::create(test_path.join("a\nb"))?;
 
-        ere(test_dir.path(), TestEditor(|_names| vec!["a\nc".escape_newlines()]))?;
+        ere(
+            Args {
+                path: test_path.to_path_buf(),
+                ..Args::default()
+            },
+            TestEditor(|_names| vec!["a\nc".escape_newlines()]),
+        )?;
 
-        let file_names = read_file_names_from_dir(test_dir.path())?;
+        let file_names = read_file_names_from_dir(test_path, true)?;
 
         assert_eq!(file_names, vec!["a\nc".to_string()]);
 
@@ -200,24 +238,54 @@ mod test {
     #[test]
     fn renames_two_files_to_each_other() -> Result<(), Error> {
         let test_dir = TempDir::new()?;
+        let test_path = test_dir.path();
 
         {
-            let mut file = File::create(test_dir.path().join("a"))?;
+            let mut file = File::create(test_path.join("a"))?;
             write!(file, "a")?;
         }
         {
-            let mut file = File::create(test_dir.path().join("b"))?;
+            let mut file = File::create(test_path.join("b"))?;
             write!(file, "b")?;
         }
 
-        ere(test_dir.path(), TestEditor(|file_names| {
-            let mut new_file_names = file_names;
-            new_file_names.reverse();
-            new_file_names
-        }))?;
+        ere(
+            Args {
+                path: test_path.to_path_buf(),
+                ..Args::default()
+            },
+            TestEditor(|file_names| {
+                let mut new_file_names = file_names;
+                new_file_names.reverse();
+                new_file_names
+            }),
+        )?;
 
-        assert_eq!(read_to_string(test_dir.path().join("a"))?, "b".to_string());
-        assert_eq!(read_to_string(test_dir.path().join("b"))?, "a".to_string());
+        assert_eq!(read_to_string(test_path.join("a"))?, "b".to_string());
+        assert_eq!(read_to_string(test_path.join("b"))?, "a".to_string());
+
+        Ok(())
+    }
+
+    #[test]
+    fn excludes_hidden_files_by_default() -> Result<(), Error> {
+        let test_dir = TempDir::new()?;
+        let test_path = test_dir.path();
+
+        File::create(test_path.join(".a"))?;
+        File::create(test_path.join("b"))?;
+
+        ere(
+            Args {
+                path: test_path.to_path_buf(),
+                ..Args::default()
+            },
+            TestEditor(|names| names),
+        )?;
+
+        let file_names = read_file_names_from_dir(test_path, false)?;
+
+        assert_eq!(file_names, vec!["b".to_string()]);
 
         Ok(())
     }

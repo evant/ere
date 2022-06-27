@@ -5,14 +5,14 @@ use std::process::{Command, exit, ExitStatus};
 
 use tempfile::NamedTempFile;
 
-use encode_newlines::NewlineEncoded;
+use escape_newlines::NewlineEscaped;
 use error::Error;
 
-use crate::encode_newlines::EncodeNewlines;
+use crate::escape_newlines::EscapeNewlines;
 
 mod tempfile_ext;
 mod error;
-mod encode_newlines;
+mod escape_newlines;
 
 fn main() {
     match ere(".", EnvEditor) {
@@ -52,7 +52,7 @@ fn ere(path: impl AsRef<Path>, editor: impl Editor) -> Result<(), Error> {
     writeln!(writer, "")?;
 
     for file_name in &file_names {
-        writeln!(writer, "{}", file_name.clone().encode_newlines())?;
+        writeln!(writer, "{}", file_name.clone().escape_newlines())?;
     }
 
     let tmp = writer.into_inner()
@@ -78,7 +78,7 @@ fn ere(path: impl AsRef<Path>, editor: impl Editor) -> Result<(), Error> {
     let mut temp_file_names = Vec::new();
     while !file_names.is_empty() {
         let file_name = file_names.remove(file_names.len() - 1);
-        let new_file_name = new_file_names.remove(new_file_names.len() - 1).decode_newlines();
+        let new_file_name = new_file_names.remove(new_file_names.len() - 1).unescape();
         if file_name == new_file_name { continue; }
 
         let from = path.join(file_name);
@@ -131,13 +131,13 @@ fn read_file_names_from_dir(path: &Path) -> std::io::Result<Vec<String>> {
     Ok(file_names)
 }
 
-fn parse_file_names(path: &Path) -> std::io::Result<Vec<NewlineEncoded>> {
+fn parse_file_names(path: &Path) -> std::io::Result<Vec<NewlineEscaped>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
     return reader.lines()
         .filter(|line| line.as_ref().map_or(false, |line| !line.is_empty() && !line.starts_with("#")))
-        .map(|line| line.map(|line| line.encode_newlines()))
+        .map(|line| line.map(|line| line.escape_newlines()))
         .collect::<Result<Vec<_>, _>>();
 }
 
@@ -151,7 +151,7 @@ mod test {
 
     use crate::*;
 
-    struct TestEditor(fn(Vec<NewlineEncoded>) -> Vec<NewlineEncoded>);
+    struct TestEditor(fn(Vec<NewlineEscaped>) -> Vec<NewlineEscaped>);
 
     impl Editor for TestEditor {
         fn edit(&self, path: &Path) -> std::io::Result<ExitStatus> {
@@ -173,7 +173,7 @@ mod test {
 
         File::create(test_dir.path().join("a"))?;
 
-        ere(test_dir.path(), TestEditor(|_names| vec!["b".encode_newlines()]))?;
+        ere(test_dir.path(), TestEditor(|_names| vec!["b".escape_newlines()]))?;
 
         let file_names = read_file_names_from_dir(test_dir.path())?;
 
@@ -188,7 +188,7 @@ mod test {
 
         File::create(test_dir.path().join("a\nb"))?;
 
-        ere(test_dir.path(), TestEditor(|_names| vec!["a\nc".encode_newlines()]))?;
+        ere(test_dir.path(), TestEditor(|_names| vec!["a\nc".escape_newlines()]))?;
 
         let file_names = read_file_names_from_dir(test_dir.path())?;
 

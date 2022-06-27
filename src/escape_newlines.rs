@@ -1,8 +1,14 @@
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewlineEscaped {
     str: String,
+}
+
+impl NewlineEscaped {
+    pub fn new(str: impl Into<String>) -> NewlineEscaped {
+        NewlineEscaped { str: str.into() }
+    }
 }
 
 impl Display for NewlineEscaped {
@@ -82,12 +88,6 @@ impl NewlineEscaped {
 #[cfg(test)]
 mod test {
     use crate::{EscapeNewlines, NewlineEscaped};
-
-    impl NewlineEscaped {
-        fn new(str: impl Into<String>) -> NewlineEscaped {
-            NewlineEscaped { str: str.into() }
-        }
-    }
 
     #[test]
     fn escapes_newline() {

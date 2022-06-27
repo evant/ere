@@ -10,6 +10,11 @@ pico-args = { version = "0.5.0", features = ["combined-flags"] }
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 fastrand = "1.7.0"
+walkdir = "2.3.2"
+
+[dev-dependencies]
+assert_fs = "1.0.7"
+predicates = "2.1.1"
 
 [profile.release]
 strip = true
